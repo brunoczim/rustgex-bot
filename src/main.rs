@@ -1,9 +1,7 @@
 use futures::StreamExt;
 use regex::{Regex, RegexBuilder};
-use std::{collections::VecDeque, env, error::Error as StdError, fmt, process};
+use std::{env, error::Error as StdError, fmt, process};
 use telegram_bot::CanReplySendMessage;
-
-const MESSAGE_LIMIT: usize = 4000;
 
 #[derive(Debug)]
 enum FatalError {
@@ -42,6 +40,7 @@ impl From<telegram_bot::Error> for FatalError {
 enum RuleError {
     MissingMessage,
     MissingReplacement,
+    ReplyingNonText,
     UnrecognizedFlag(char),
     DuplicatedFlag(char),
     InvalidRegex(regex::Error),
@@ -55,6 +54,9 @@ impl fmt::Display for RuleError {
             },
             RuleError::MissingReplacement => {
                 write!(fmtr, "Replacement is missing")?
+            },
+            RuleError::ReplyingNonText => {
+                write!(fmtr, "Can only compute text messages")?
             },
             RuleError::UnrecognizedFlag(character) => {
                 write!(fmtr, "Unrecognized flag {:?}", character)?
@@ -145,7 +147,6 @@ impl Flags {
         let mut this = Self::default();
 
         for character in flag_str.chars() {
-            let mut duplicated = false;
             match character {
                 'i' => Self::set(&mut this.case_insensitive, character)?,
                 'm' => Self::set(&mut this.multi_line, character)?,
@@ -261,7 +262,7 @@ enum Command<'msg> {
 
 impl<'msg> Command<'msg> {
     fn parse(
-        message: &str,
+        message: &'msg str,
         handle: Option<&str>,
     ) -> Result<Option<Self>, CommandError> {
         if let Some(command) = HelpCommand::parse(message, handle) {
@@ -280,6 +281,10 @@ struct App {
 }
 
 impl App {
+    fn new(handle: Option<String>) -> Self {
+        Self { previous_msg_or_post: None, handle }
+    }
+
     async fn handle_update(
         &mut self,
         update: telegram_bot::Update,
@@ -287,18 +292,16 @@ impl App {
     ) -> Result<(), FatalError> {
         match update.kind {
             telegram_bot::UpdateKind::Message(message) => {
-                self.handle_msg_or_post(
-                    &telegram_bot::MessageOrChannelPost::Message(message),
-                    api,
-                )
-                .await?;
+                let msg_or_post =
+                    telegram_bot::MessageOrChannelPost::Message(message);
+                self.handle_msg_or_post(&msg_or_post, api).await?;
+                self.previous_msg_or_post = Some(msg_or_post);
             },
             telegram_bot::UpdateKind::ChannelPost(post) => {
-                self.handle_msg_or_post(
-                    &telegram_bot::MessageOrChannelPost::ChannelPost(post),
-                    api,
-                )
-                .await?;
+                let msg_or_post =
+                    telegram_bot::MessageOrChannelPost::ChannelPost(post);
+                self.handle_msg_or_post(&msg_or_post, api).await?;
+                self.previous_msg_or_post = Some(msg_or_post);
             },
             _ => (),
         }
@@ -336,7 +339,7 @@ impl App {
     }
 
     fn run_command(
-        &mut self,
+        &self,
         msg_or_post: &telegram_bot::MessageOrChannelPost,
         message: &str,
     ) -> Result<Option<String>, CommandError> {
@@ -351,17 +354,37 @@ impl App {
             ))),
 
             Some(Command::Rule(rule)) => {
-                Ok(Some(Rule::from_command(rule)?.replace()))
+                let target_message = self
+                    .target_message(msg_or_post)
+                    .ok_or(RuleError::MissingMessage)?;
+                let kind = match target_message {
+                    telegram_bot::MessageOrChannelPost::Message(message) => {
+                        &message.kind
+                    },
+                    telegram_bot::MessageOrChannelPost::ChannelPost(post) => {
+                        &post.kind
+                    },
+                };
+                match &kind {
+                    telegram_bot::MessageKind::Text {
+                        data: reply_data,
+                        ..
+                    } => {
+                        Ok(Some(Rule::from_command(rule)?.replace(&reply_data)))
+                    },
+
+                    _ => Err(RuleError::ReplyingNonText)?,
+                }
             },
 
             None => Ok(None),
         }
     }
 
-    fn target_message(
-        &self,
-        msg_or_post: &telegram_bot::MessageOrChannelPost,
-    ) -> Option<&telegram_bot::MessageOrChannelPost> {
+    fn target_message<'this>(
+        &'this self,
+        msg_or_post: &'this telegram_bot::MessageOrChannelPost,
+    ) -> Option<&'this telegram_bot::MessageOrChannelPost> {
         let reply_to_message = match msg_or_post {
             telegram_bot::MessageOrChannelPost::Message(message) => {
                 &message.reply_to_message
@@ -411,65 +434,16 @@ impl App {
 async fn try_main() -> Result<(), FatalError> {
     let token =
         env::var("TELEGRAM_BOT_TOKEN").map_err(FatalError::MissingToken)?;
+    let handle = env::var("TELEGRAM_BOT_HANDLE").ok();
     let telegram_api = telegram_bot::Api::new(token);
     let mut telegram_stream = telegram_api.stream();
 
-    let mut messages = VecDeque::new();
+    let mut app = App::new(handle);
 
     while let Some(update) = telegram_stream.next().await.transpose()? {
-        if let telegram_bot::UpdateKind::Message(message) = update.kind {
-            if let telegram_bot::MessageKind::Text { data: raw_data, .. } =
-                &message.kind
-            {
-                let mut data = raw_data.trim();
-                if let Some((_, tail)) = data.split_once("s/") {
-                    data = tail;
-                    let mut last_char = 'a';
-                    match data.split_once(|current_char| {
-                        let should_split =
-                            current_char == '/' && last_char != '\\';
-                        last_char = current_char;
-                        should_split
-                    }) {
-                        Some((search, tail)) => {
-                            data = tail;
-                            last_char = 'a';
-                            let (replacement, flags) = data
-                                .split_once(|current_char| {
-                                    let should_split = current_char == '/'
-                                        && last_char != '\\';
-                                    last_char = current_char;
-                                    should_split
-                                })
-                                .unwrap_or((data, ""));
-                            match &message.reply_to_message {
-                                Some(boxed_target) => {
-                                    if let telegram_bot::MessageOrChannelPost::Message(replied_message) = boxed_target.as_ref() {
-                                        if let telegram_bot::MessageKind::Text { data: replied_data, entities } =
-                                            &replied_message.kind
-                                        {
-
-                                            match regex::Regex::new(search) {
-                                                Ok(regex) => {
-                                            telegram_api.send(replied_message.text_reply(
-                                                    &regex.replace(replied_data, replacement),
-                                                    )).await?;
-                                                },
-                                                Err(_) => todo!("send error"),
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        },
-                        None => todo!("send error"),
-                    }
-                }
-            }
-            messages.push_front(message);
-            messages.truncate(MESSAGE_LIMIT);
-        }
+        app.handle_update(update, &telegram_api).await?;
     }
+
     Ok(())
 }
 
