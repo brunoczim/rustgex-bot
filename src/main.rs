@@ -1,6 +1,10 @@
+mod cfg;
+mod app;
+
+use cfg::Config;
 use futures::StreamExt;
 use regex::{Regex, RegexBuilder};
-use std::{env, error::Error as StdError, fmt, process, time::Instant};
+use std::{error::Error as StdError, fmt, process, time::Instant};
 use telegram_bot::CanReplySendMessage;
 
 #[derive(Debug)]
@@ -291,8 +295,8 @@ impl<'cfg> App<'cfg> {
     fn new(config: &'cfg Config) -> Self {
         Self {
             previous_msg_or_post: None,
-            telegram_api: telegram_bot::Api::new(&config.token),
-            handle: config.handle.as_ref().map(String::as_ref),
+            telegram_api: telegram_bot::Api::new(config.token()),
+            handle: config.handle(),
         }
     }
 
@@ -440,52 +444,13 @@ impl<'cfg> App<'cfg> {
     }
 }
 
-struct Config {
-    token: String,
-    handle: Option<String>,
-    max_failures_per_minute: u128,
-}
-
-impl Config {
-    pub fn from_env() -> Self {
-        const TOKEN_VAR: &str = "TELEGRAM_BOT_TOKEN";
-        const HANDLE_VAR: &str = "TELEGRAM_BOT_HANDLE";
-        const MAX_FAILURES_PER_MINUTE_VAR: &str =
-            "TELEGRAM_BOT_MAX_FAILURES_PER_MINUTE";
-
-        Self {
-            token: match env::var(TOKEN_VAR) {
-                Ok(token) => token,
-                Err(error) => {
-                    eprintln!("Error with {}: {}", TOKEN_VAR, error);
-                    process::exit(1);
-                },
-            },
-
-            handle: env::var(HANDLE_VAR).ok(),
-
-            max_failures_per_minute: match env::var(MAX_FAILURES_PER_MINUTE_VAR)
-                .ok()
-            {
-                Some(string) => match string.parse() {
-                    Ok(number) => number,
-                    Err(error) => {
-                        eprintln!(
-                            "Error with {}: {}",
-                            MAX_FAILURES_PER_MINUTE_VAR, error
-                        );
-                        process::exit(1);
-                    },
-                },
-                None => 30,
-            },
-        }
-    }
-}
-
 #[tokio::main]
 async fn main() {
-    let config = Config::from_env();
+    let config = Config::from_env().unwrap_or_else(|error| {
+        eprintln!("Environment error...");
+        eprintln!("{}", error);
+        process::exit(-1)
+    });
 
     let start = Instant::now();
     let mut failures = 0u128;
@@ -497,7 +462,7 @@ async fn main() {
             Err(error) => {
                 failures += 1;
                 eprintln!("{}", error);
-                if failures * 60 > config.max_failures_per_minute * secs {
+                if failures * 60 > config.max_failures_per_minute() * secs {
                     println!("Exiting because");
                     break;
                 }
