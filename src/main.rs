@@ -1,38 +1,33 @@
 use futures::StreamExt;
 use regex::{Regex, RegexBuilder};
-use std::{env, error::Error as StdError, fmt, process};
+use std::{env, error::Error as StdError, fmt, process, time::Instant};
 use telegram_bot::CanReplySendMessage;
 
 #[derive(Debug)]
-enum FatalError {
-    MissingToken(env::VarError),
+enum AppError {
     Telegram(telegram_bot::Error),
 }
 
-impl fmt::Display for FatalError {
+impl fmt::Display for AppError {
     fn fmt(&self, fmtr: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            FatalError::MissingToken(cause) => {
-                write!(fmtr, "Problem with TELEGRAM_BOT_TOKEN: {}", cause)?
-            },
-            FatalError::Telegram(cause) => write!(fmtr, "{}", cause)?,
+            AppError::Telegram(cause) => write!(fmtr, "{}", cause)?,
         }
         Ok(())
     }
 }
 
-impl StdError for FatalError {
+impl StdError for AppError {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
         match self {
-            FatalError::MissingToken(cause) => Some(cause),
-            FatalError::Telegram(cause) => Some(cause),
+            AppError::Telegram(cause) => Some(cause),
         }
     }
 }
 
-impl From<telegram_bot::Error> for FatalError {
+impl From<telegram_bot::Error> for AppError {
     fn from(cause: telegram_bot::Error) -> Self {
-        FatalError::Telegram(cause)
+        AppError::Telegram(cause)
     }
 }
 
@@ -275,32 +270,47 @@ impl<'msg> Command<'msg> {
     }
 }
 
-struct App {
+struct App<'cfg> {
     previous_msg_or_post: Option<telegram_bot::MessageOrChannelPost>,
-    handle: Option<String>,
+    telegram_api: telegram_bot::Api,
+    handle: Option<&'cfg str>,
 }
 
-impl App {
-    fn new(handle: Option<String>) -> Self {
-        Self { previous_msg_or_post: None, handle }
+impl<'cfg> App<'cfg> {
+    async fn main(config: &'cfg Config) -> Result<(), AppError> {
+        let mut this = Self::new(config);
+
+        let mut update_stream = this.telegram_api.stream();
+        while let Some(update) = update_stream.next().await.transpose()? {
+            this.handle_update(update).await?;
+        }
+
+        Ok(())
+    }
+
+    fn new(config: &'cfg Config) -> Self {
+        Self {
+            previous_msg_or_post: None,
+            telegram_api: telegram_bot::Api::new(&config.token),
+            handle: config.handle.as_ref().map(String::as_ref),
+        }
     }
 
     async fn handle_update(
         &mut self,
         update: telegram_bot::Update,
-        api: &telegram_bot::Api,
-    ) -> Result<(), FatalError> {
+    ) -> Result<(), AppError> {
         match update.kind {
             telegram_bot::UpdateKind::Message(message) => {
                 let msg_or_post =
                     telegram_bot::MessageOrChannelPost::Message(message);
-                self.handle_msg_or_post(&msg_or_post, api).await?;
+                self.handle_msg_or_post(&msg_or_post).await?;
                 self.previous_msg_or_post = Some(msg_or_post);
             },
             telegram_bot::UpdateKind::ChannelPost(post) => {
                 let msg_or_post =
                     telegram_bot::MessageOrChannelPost::ChannelPost(post);
-                self.handle_msg_or_post(&msg_or_post, api).await?;
+                self.handle_msg_or_post(&msg_or_post).await?;
                 self.previous_msg_or_post = Some(msg_or_post);
             },
             _ => (),
@@ -311,8 +321,7 @@ impl App {
     async fn handle_msg_or_post(
         &mut self,
         msg_or_post: &telegram_bot::MessageOrChannelPost,
-        api: &telegram_bot::Api,
-    ) -> Result<(), FatalError> {
+    ) -> Result<(), AppError> {
         match msg_or_post {
             telegram_bot::MessageOrChannelPost::Message(message) => {
                 if let telegram_bot::MessageKind::Text {
@@ -320,8 +329,7 @@ impl App {
                 } = &message.kind
                 {
                     let result = self.run_command(msg_or_post, msg_data);
-                    self.execute_command_result(msg_or_post, result, api)
-                        .await?;
+                    self.execute_command_result(msg_or_post, result).await?;
                 }
             },
             telegram_bot::MessageOrChannelPost::ChannelPost(post) => {
@@ -330,8 +338,7 @@ impl App {
                 } = &post.kind
                 {
                     let result = self.run_command(msg_or_post, msg_data);
-                    self.execute_command_result(msg_or_post, result, api)
-                        .await?;
+                    self.execute_command_result(msg_or_post, result).await?;
                 }
             },
         }
@@ -343,8 +350,7 @@ impl App {
         msg_or_post: &telegram_bot::MessageOrChannelPost,
         message: &str,
     ) -> Result<Option<String>, CommandError> {
-        match Command::parse(message, self.handle.as_ref().map(String::as_ref))?
-        {
+        match Command::parse(message, self.handle)? {
             Some(Command::Help(_)) => Ok(Some(format!(
                 "{}{}{}",
                 "Commands:\n",
@@ -405,52 +411,103 @@ impl App {
         &mut self,
         msg_or_post: &telegram_bot::MessageOrChannelPost,
         result: Result<Option<String>, CommandError>,
-        api: &telegram_bot::Api,
-    ) -> Result<(), FatalError> {
+    ) -> Result<(), AppError> {
         match result {
-            Ok(Some(reply)) => match self.target_message(msg_or_post) {
-                Some(to) => {
-                    api.send(to.text_reply(reply)).await?;
-                },
-                None => {
-                    api.send(
-                        msg_or_post
-                            .text_reply("Could not found a message to reply"),
-                    )
-                    .await?;
-                },
+            Ok(Some(reply)) => {
+                match self.target_message(msg_or_post) {
+                    Some(to) => {
+                        self.telegram_api.send(to.text_reply(reply)).await?;
+                    },
+                    None => {
+                        self.telegram_api
+                            .send(msg_or_post.text_reply(
+                                "Could not found a message to reply",
+                            ))
+                            .await?;
+                    },
+                }
             },
 
             Ok(None) => (),
 
             Err(error) => {
-                api.send(msg_or_post.text_reply(error.to_string())).await?;
+                self.telegram_api
+                    .send(msg_or_post.text_reply(error.to_string()))
+                    .await?;
             },
         }
         Ok(())
     }
 }
 
-async fn try_main() -> Result<(), FatalError> {
-    let token =
-        env::var("TELEGRAM_BOT_TOKEN").map_err(FatalError::MissingToken)?;
-    let handle = env::var("TELEGRAM_BOT_HANDLE").ok();
-    let telegram_api = telegram_bot::Api::new(token);
-    let mut telegram_stream = telegram_api.stream();
+struct Config {
+    token: String,
+    handle: Option<String>,
+    max_failures_per_minute: u128,
+}
 
-    let mut app = App::new(handle);
+impl Config {
+    pub fn from_env() -> Self {
+        const TOKEN_VAR: &str = "TELEGRAM_BOT_TOKEN";
+        const HANDLE_VAR: &str = "TELEGRAM_BOT_HANDLE";
+        const MAX_FAILURES_PER_MINUTE_VAR: &str =
+            "TELEGRAM_BOT_MAX_FAILURES_PER_MINUTE";
 
-    while let Some(update) = telegram_stream.next().await.transpose()? {
-        app.handle_update(update, &telegram_api).await?;
+        Self {
+            token: match env::var(TOKEN_VAR) {
+                Ok(token) => token,
+                Err(error) => {
+                    eprintln!("Error with {}: {}", TOKEN_VAR, error);
+                    process::exit(1);
+                },
+            },
+
+            handle: env::var(HANDLE_VAR).ok(),
+
+            max_failures_per_minute: match env::var(MAX_FAILURES_PER_MINUTE_VAR)
+                .ok()
+            {
+                Some(string) => match string.parse() {
+                    Ok(number) => number,
+                    Err(error) => {
+                        eprintln!(
+                            "Error with {}: {}",
+                            MAX_FAILURES_PER_MINUTE_VAR, error
+                        );
+                        process::exit(1);
+                    },
+                },
+                None => 30,
+            },
+        }
     }
-
-    Ok(())
 }
 
 #[tokio::main]
 async fn main() {
-    if let Err(error) = try_main().await {
-        eprintln!("{}", error);
-        process::exit(1);
+    let config = Config::from_env();
+
+    let start = Instant::now();
+    let mut failures = 0u128;
+
+    loop {
+        let result = App::main(&config).await;
+        let secs = u128::from(start.elapsed().as_secs());
+        match result {
+            Err(error) => {
+                failures += 1;
+                eprintln!("{}", error);
+                if failures * 60 > config.max_failures_per_minute * secs {
+                    println!("Exiting because");
+                    break;
+                }
+                println!("Restarting...");
+            },
+
+            _ => {
+                println!("Disconecting without errors...");
+                break;
+            },
+        }
     }
 }
