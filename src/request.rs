@@ -1,7 +1,4 @@
-use crate::{
-    config::Config,
-    domain::{Id, Message},
-};
+use crate::domain::{Bot, Id, Message};
 use std::{error::Error, fmt, rc::Rc, sync::Arc};
 
 pub trait Parser<M, C>: fmt::Debug
@@ -14,7 +11,7 @@ where
 
     fn parse(
         &self,
-        config: &Config,
+        bot: &Bot,
         message: &Message<M, C>,
     ) -> Result<Option<Self::Request>, Self::Error>;
 }
@@ -30,10 +27,10 @@ where
 
     fn parse(
         &self,
-        config: &Config,
+        bot: &Bot,
         message: &Message<M, C>,
     ) -> Result<Option<Self::Request>, Self::Error> {
-        (**self).parse(config, message)
+        (**self).parse(bot, message)
     }
 }
 
@@ -48,10 +45,10 @@ where
 
     fn parse(
         &self,
-        config: &Config,
+        bot: &Bot,
         message: &Message<M, C>,
     ) -> Result<Option<Self::Request>, Self::Error> {
-        (**self).parse(config, message)
+        (**self).parse(bot, message)
     }
 }
 
@@ -66,10 +63,10 @@ where
 
     fn parse(
         &self,
-        config: &Config,
+        bot: &Bot,
         message: &Message<M, C>,
     ) -> Result<Option<Self::Request>, Self::Error> {
-        (**self).parse(config, message)
+        (**self).parse(bot, message)
     }
 }
 
@@ -84,10 +81,10 @@ where
 
     fn parse(
         &self,
-        config: &Config,
+        bot: &Bot,
         message: &Message<M, C>,
     ) -> Result<Option<Self::Request>, Self::Error> {
-        (**self).parse(config, message)
+        (**self).parse(bot, message)
     }
 }
 
@@ -102,9 +99,9 @@ where
 
     fn parse(
         &self,
-        config: &Config,
+        bot: &Bot,
         message: &Message<M, C>,
     ) -> Result<Option<Self::Request>, Self::Error> {
-        (**self).parse(config, message)
+        (**self).parse(bot, message)
     }
 }

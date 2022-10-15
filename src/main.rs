@@ -3,11 +3,11 @@ use std::process;
 use adapter::telegram::TgMessageChannel;
 use app::App;
 use commands::help::{HelpCommand, HelpRequestParser};
-use config::Config;
+use env::Environment;
 use handler::DefaultHandler;
 
 mod future;
-mod config;
+mod env;
 mod domain;
 mod port;
 mod adapter;
@@ -19,15 +19,18 @@ mod app;
 
 #[tokio::main]
 async fn main() {
-    let config = Config::from_env().unwrap_or_else(|error| {
+    let environment = Environment::load().unwrap_or_else(|error| {
         eprintln!("Error with environment...");
         eprintln!("    {}", error);
         process::exit(1);
     });
 
-    let channel = TgMessageChannel::new(config.token());
+    let Environment { token, handle } = environment;
 
-    let result = App::new(config)
+    let bot = domain::Bot { handle };
+    let channel = TgMessageChannel::new(&token);
+
+    let result = App::new(bot)
         .handler(DefaultHandler {
             request_parser: HelpRequestParser,
             command: HelpCommand,

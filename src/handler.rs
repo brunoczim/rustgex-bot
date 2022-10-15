@@ -2,8 +2,7 @@ use std::{error::Error, fmt, rc::Rc, sync::Arc};
 
 use crate::{
     command::Command,
-    config::Config,
-    domain::{Id, Message},
+    domain::{Bot, Id, Message},
     future::DynFuture,
     port::Sender,
     request,
@@ -16,7 +15,7 @@ pub trait Handler: fmt::Debug {
 
     fn run<'fut>(
         &'fut self,
-        config: &'fut Config,
+        bot: &'fut Bot,
         input_message: &'fut Message<Self::MessageId, Self::ChatId>,
     ) -> DynFuture<'fut, Result<bool, Self::Error>>;
 }
@@ -31,10 +30,10 @@ where
 
     fn run<'fut>(
         &'fut self,
-        config: &'fut Config,
+        bot: &'fut Bot,
         input_message: &'fut Message<Self::MessageId, Self::ChatId>,
     ) -> DynFuture<'fut, Result<bool, Self::Error>> {
-        (**self).run(config, input_message)
+        (**self).run(bot, input_message)
     }
 }
 
@@ -48,10 +47,10 @@ where
 
     fn run<'fut>(
         &'fut self,
-        config: &'fut Config,
+        bot: &'fut Bot,
         input_message: &'fut Message<Self::MessageId, Self::ChatId>,
     ) -> DynFuture<'fut, Result<bool, Self::Error>> {
-        (**self).run(config, input_message)
+        (**self).run(bot, input_message)
     }
 }
 
@@ -65,10 +64,10 @@ where
 
     fn run<'fut>(
         &'fut self,
-        config: &'fut Config,
+        bot: &'fut Bot,
         input_message: &'fut Message<Self::MessageId, Self::ChatId>,
     ) -> DynFuture<'fut, Result<bool, Self::Error>> {
-        (**self).run(config, input_message)
+        (**self).run(bot, input_message)
     }
 }
 
@@ -82,10 +81,10 @@ where
 
     fn run<'fut>(
         &'fut self,
-        config: &'fut Config,
+        bot: &'fut Bot,
         input_message: &'fut Message<Self::MessageId, Self::ChatId>,
     ) -> DynFuture<'fut, Result<bool, Self::Error>> {
-        (**self).run(config, input_message)
+        (**self).run(bot, input_message)
     }
 }
 
@@ -99,10 +98,10 @@ where
 
     fn run<'fut>(
         &'fut self,
-        config: &'fut Config,
+        bot: &'fut Bot,
         input_message: &'fut Message<Self::MessageId, Self::ChatId>,
     ) -> DynFuture<'fut, Result<bool, Self::Error>> {
-        (**self).run(config, input_message)
+        (**self).run(bot, input_message)
     }
 }
 
@@ -136,13 +135,13 @@ where
 
     fn run<'fut>(
         &'fut self,
-        config: &'fut Config,
+        bot: &'fut Bot,
         input_message: &'fut Message<Self::MessageId, Self::ChatId>,
     ) -> DynFuture<'fut, Result<bool, Self::Error>> {
         Box::pin(async move {
             match self
                 .request_parser
-                .parse(config, input_message)
+                .parse(bot, input_message)
                 .map_err(DefaultHandlerError::Request)?
             {
                 Some(request) => {

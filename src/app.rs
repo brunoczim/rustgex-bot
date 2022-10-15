@@ -1,4 +1,8 @@
-use crate::{config::Config, domain::Id, handler::Handler, port::Receiver};
+use crate::{
+    domain::{Bot, Id},
+    handler::Handler,
+    port::Receiver,
+};
 use std::{error::Error, fmt, sync::Arc};
 
 #[derive(Debug, Clone)]
@@ -40,7 +44,7 @@ where
     C: Id,
     E: Error,
 {
-    config: Config,
+    bot: Bot,
     handlers: Vec<
         Arc<
             dyn Handler<MessageId = M, ChatId = C, Error = E>
@@ -57,8 +61,8 @@ where
     C: Id,
     E: Error,
 {
-    pub fn new(config: Config) -> Self {
-        Self { config, handlers: Vec::new() }
+    pub fn new(bot: Bot) -> Self {
+        Self { bot, handlers: Vec::new() }
     }
 
     pub fn handler<H>(mut self, handler: H) -> Self
@@ -81,7 +85,7 @@ where
         {
             for handler in &self.handlers {
                 if handler
-                    .run(&self.config, &input_message)
+                    .run(&self.bot, &input_message)
                     .await
                     .map_err(AppError::Handler)?
                 {

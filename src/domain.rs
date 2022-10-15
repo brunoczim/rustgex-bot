@@ -54,3 +54,8 @@ where
 {
     pub data: MessageData<M, C>,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Bot {
+    pub handle: String,
+}

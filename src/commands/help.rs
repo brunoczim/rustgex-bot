@@ -1,7 +1,6 @@
 use crate::{
     command::Command,
-    config::Config,
-    domain::{Id, Message, MessageData, NewMessage, ReplyTarget},
+    domain::{Bot, Id, Message, MessageData, NewMessage, ReplyTarget},
     request,
 };
 use std::{error::Error, fmt};
@@ -40,19 +39,15 @@ where
 
     fn parse(
         &self,
-        config: &Config,
+        bot: &Bot,
         message: &Message<M, C>,
     ) -> Result<Option<Self::Request>, Self::Error> {
         let matches_without_handle = message.data.content.trim() == "/help";
-        let matches_with_handle = config
-            .handle()
-            .and_then(|handle| {
-                message
-                    .data
-                    .content
-                    .split_once("@")
-                    .map(|(head, tail)| head == "/help" && tail == handle)
-            })
+        let matches_with_handle = message
+            .data
+            .content
+            .split_once("@")
+            .map(|(head, tail)| head == "/help" && tail == bot.handle)
             .unwrap_or(false);
         if matches_with_handle || matches_without_handle {
             Ok(Some(HelpRequest {
