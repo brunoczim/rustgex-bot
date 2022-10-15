@@ -1,6 +1,7 @@
 use crate::{
     domain,
-    port::{Disconnected, DynFuture, MessageChannel},
+    future::DynFuture,
+    port::{Disconnected, MessageChannel},
 };
 use core::fmt;
 use futures::StreamExt;
@@ -8,7 +9,6 @@ use telegram_bot::{
     Api,
     ChatId,
     Error,
-    Message,
     MessageId,
     MessageKind,
     MessageOrChannelPost,

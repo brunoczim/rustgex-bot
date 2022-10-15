@@ -10,8 +10,6 @@ pub trait Id:
     + PartialOrd
     + Ord
     + Hash
-    + Send
-    + Sync
 {
 }
 
