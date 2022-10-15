@@ -1,7 +1,7 @@
 use crate::{
     domain::{self, MessageData},
     future::DynFuture,
-    port::{Disconnected, MessageChannel},
+    port::{Disconnected, Receiver, Sender},
 };
 use core::fmt;
 use futures::StreamExt;
@@ -66,6 +66,7 @@ fn tg_message_to_domain(
     convert_with_custom_reply(msg_or_post, true)
 }
 
+#[derive(Clone)]
 pub struct TgMessageChannel {
     api: Api,
 }
@@ -85,7 +86,7 @@ impl fmt::Debug for TgMessageChannel {
 impl domain::Id for MessageId {}
 impl domain::Id for ChatId {}
 
-impl MessageChannel for TgMessageChannel {
+impl Sender for TgMessageChannel {
     type Error = Error;
     type MessageId = MessageId;
     type ChatId = ChatId;
@@ -110,6 +111,12 @@ impl MessageChannel for TgMessageChannel {
             Ok(())
         })
     }
+}
+
+impl Receiver for TgMessageChannel {
+    type Error = Error;
+    type MessageId = MessageId;
+    type ChatId = ChatId;
 
     fn receive<'fut>(
         &'fut self,

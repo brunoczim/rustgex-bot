@@ -16,7 +16,7 @@ impl fmt::Display for Disconnected {
 
 impl Error for Disconnected {}
 
-pub trait MessageChannel {
+pub trait Sender {
     type MessageId: Id;
     type ChatId: Id;
     type Error: Error;
@@ -25,6 +25,92 @@ pub trait MessageChannel {
         &'fut self,
         message: &'fut NewMessage<Self::MessageId, Self::ChatId>,
     ) -> DynFuture<'fut, Result<(), Self::Error>>;
+}
+
+impl<'this, S> Sender for &'this S
+where
+    S: Sender + ?Sized,
+{
+    type MessageId = S::MessageId;
+    type ChatId = S::ChatId;
+    type Error = S::Error;
+
+    fn send<'fut>(
+        &'fut self,
+        message: &'fut NewMessage<Self::MessageId, Self::ChatId>,
+    ) -> DynFuture<'fut, Result<(), Self::Error>> {
+        (**self).send(message)
+    }
+}
+
+impl<'this, S> Sender for &'this mut S
+where
+    S: Sender + ?Sized,
+{
+    type MessageId = S::MessageId;
+    type ChatId = S::ChatId;
+    type Error = S::Error;
+
+    fn send<'fut>(
+        &'fut self,
+        message: &'fut NewMessage<Self::MessageId, Self::ChatId>,
+    ) -> DynFuture<'fut, Result<(), Self::Error>> {
+        (**self).send(message)
+    }
+}
+
+impl<S> Sender for Box<S>
+where
+    S: Sender + ?Sized,
+{
+    type MessageId = S::MessageId;
+    type ChatId = S::ChatId;
+    type Error = S::Error;
+
+    fn send<'fut>(
+        &'fut self,
+        message: &'fut NewMessage<Self::MessageId, Self::ChatId>,
+    ) -> DynFuture<'fut, Result<(), Self::Error>> {
+        (**self).send(message)
+    }
+}
+
+impl<S> Sender for Rc<S>
+where
+    S: Sender + ?Sized,
+{
+    type MessageId = S::MessageId;
+    type ChatId = S::ChatId;
+    type Error = S::Error;
+
+    fn send<'fut>(
+        &'fut self,
+        message: &'fut NewMessage<Self::MessageId, Self::ChatId>,
+    ) -> DynFuture<'fut, Result<(), Self::Error>> {
+        (**self).send(message)
+    }
+}
+
+impl<S> Sender for Arc<S>
+where
+    S: Sender + ?Sized,
+{
+    type MessageId = S::MessageId;
+    type ChatId = S::ChatId;
+    type Error = S::Error;
+
+    fn send<'fut>(
+        &'fut self,
+        message: &'fut NewMessage<Self::MessageId, Self::ChatId>,
+    ) -> DynFuture<'fut, Result<(), Self::Error>> {
+        (**self).send(message)
+    }
+}
+
+pub trait Receiver {
+    type MessageId: Id;
+    type ChatId: Id;
+    type Error: Error;
 
     fn receive<'fut>(
         &'fut self,
@@ -37,20 +123,13 @@ pub trait MessageChannel {
     >;
 }
 
-impl<'this, M> MessageChannel for &'this M
+impl<'this, R> Receiver for &'this R
 where
-    M: MessageChannel + ?Sized,
+    R: Receiver + ?Sized,
 {
-    type MessageId = M::MessageId;
-    type ChatId = M::ChatId;
-    type Error = M::Error;
-
-    fn send<'fut>(
-        &'fut self,
-        message: &'fut NewMessage<Self::MessageId, Self::ChatId>,
-    ) -> DynFuture<'fut, Result<(), Self::Error>> {
-        (**self).send(message)
-    }
+    type MessageId = R::MessageId;
+    type ChatId = R::ChatId;
+    type Error = R::Error;
 
     fn receive<'fut>(
         &'fut self,
@@ -63,22 +142,16 @@ where
     > {
         (**self).receive()
     }
+
 }
 
-impl<'this, M> MessageChannel for &'this mut M
+impl<'this, R> Receiver for &'this mut R
 where
-    M: MessageChannel + ?Sized,
+    R: Receiver + ?Sized,
 {
-    type MessageId = M::MessageId;
-    type ChatId = M::ChatId;
-    type Error = M::Error;
-
-    fn send<'fut>(
-        &'fut self,
-        message: &'fut NewMessage<Self::MessageId, Self::ChatId>,
-    ) -> DynFuture<'fut, Result<(), Self::Error>> {
-        (**self).send(message)
-    }
+    type MessageId = R::MessageId;
+    type ChatId = R::ChatId;
+    type Error = R::Error;
 
     fn receive<'fut>(
         &'fut self,
@@ -91,22 +164,16 @@ where
     > {
         (**self).receive()
     }
+
 }
 
-impl<M> MessageChannel for Box<M>
+impl<R> Receiver for Box<R>
 where
-    M: MessageChannel + ?Sized,
+    R: Receiver + ?Sized,
 {
-    type MessageId = M::MessageId;
-    type ChatId = M::ChatId;
-    type Error = M::Error;
-
-    fn send<'fut>(
-        &'fut self,
-        message: &'fut NewMessage<Self::MessageId, Self::ChatId>,
-    ) -> DynFuture<'fut, Result<(), Self::Error>> {
-        (**self).send(message)
-    }
+    type MessageId = R::MessageId;
+    type ChatId = R::ChatId;
+    type Error = R::Error;
 
     fn receive<'fut>(
         &'fut self,
@@ -119,22 +186,16 @@ where
     > {
         (**self).receive()
     }
+
 }
 
-impl<M> MessageChannel for Rc<M>
+impl<R> Receiver for Rc<R>
 where
-    M: MessageChannel + ?Sized,
+    R: Receiver + ?Sized,
 {
-    type MessageId = M::MessageId;
-    type ChatId = M::ChatId;
-    type Error = M::Error;
-
-    fn send<'fut>(
-        &'fut self,
-        message: &'fut NewMessage<Self::MessageId, Self::ChatId>,
-    ) -> DynFuture<'fut, Result<(), Self::Error>> {
-        (**self).send(message)
-    }
+    type MessageId = R::MessageId;
+    type ChatId = R::ChatId;
+    type Error = R::Error;
 
     fn receive<'fut>(
         &'fut self,
@@ -147,22 +208,16 @@ where
     > {
         (**self).receive()
     }
+
 }
 
-impl<M> MessageChannel for Arc<M>
+impl<R> Receiver for Arc<R>
 where
-    M: MessageChannel + ?Sized,
+    R: Receiver + ?Sized,
 {
-    type MessageId = M::MessageId;
-    type ChatId = M::ChatId;
-    type Error = M::Error;
-
-    fn send<'fut>(
-        &'fut self,
-        message: &'fut NewMessage<Self::MessageId, Self::ChatId>,
-    ) -> DynFuture<'fut, Result<(), Self::Error>> {
-        (**self).send(message)
-    }
+    type MessageId = R::MessageId;
+    type ChatId = R::ChatId;
+    type Error = R::Error;
 
     fn receive<'fut>(
         &'fut self,
@@ -175,4 +230,5 @@ where
     > {
         (**self).receive()
     }
+
 }

@@ -6,7 +6,7 @@ use crate::{
     config::Config,
     domain::{Id, Message},
     future::DynFuture,
-    port::MessageChannel,
+    port::Sender,
     request,
 };
 
@@ -108,32 +108,32 @@ where
 }
 
 #[derive(Debug, Clone)]
-pub struct DefaultHandler<R, Co, C>
+pub struct DefaultHandler<R, C, S>
 where
-    R: request::Parser<C::MessageId, C::ChatId>,
-    Co: Command<R::Request, C::MessageId, C::ChatId>,
-    C: MessageChannel,
+    R: request::Parser<S::MessageId, S::ChatId>,
+    C: Command<R::Request, S::MessageId, S::ChatId>,
+    S: Sender,
 {
     pub request_parser: R,
-    pub command: Co,
-    pub channel: C,
+    pub command: C,
+    pub channel: S,
 }
 
-impl<R, Co, C> Handler for DefaultHandler<R, Co, C>
+impl<R, C, S> Handler for DefaultHandler<R, C, S>
 where
-    R: request::Parser<C::MessageId, C::ChatId> + Send + Sync,
-    Co: Command<R::Request, C::MessageId, C::ChatId> + Send + Sync,
-    C: MessageChannel + Send + Sync,
+    R: request::Parser<S::MessageId, S::ChatId> + Send + Sync,
+    C: Command<R::Request, S::MessageId, S::ChatId> + Send + Sync,
+    S: Sender + Send + Sync,
     R::Request: Send,
-    C::MessageId: Send + Sync,
-    C::ChatId: Send + Sync,
+    S::MessageId: Send + Sync,
+    S::ChatId: Send + Sync,
     R::Error: Send,
-    Co::Error: Send,
     C::Error: Send,
+    S::Error: Send,
 {
-    type MessageId = C::MessageId;
-    type ChatId = C::ChatId;
-    type Error = DefaultHandlerError<R::Error, Co::Error, C::Error>;
+    type MessageId = S::MessageId;
+    type ChatId = S::ChatId;
+    type Error = DefaultHandlerError<R::Error, C::Error, S::Error>;
 
     fn run<'fut>(
         &'fut self,
@@ -164,17 +164,17 @@ where
 }
 
 #[derive(Debug, Clone)]
-pub enum DefaultHandlerError<R, Co, C> {
+pub enum DefaultHandlerError<R, C, S> {
     Request(R),
-    Command(Co),
-    Channel(C),
+    Command(C),
+    Channel(S),
 }
 
-impl<R, Co, C> fmt::Display for DefaultHandlerError<R, Co, C>
+impl<R, C, S> fmt::Display for DefaultHandlerError<R, C, S>
 where
     R: fmt::Display,
-    Co: fmt::Display,
     C: fmt::Display,
+    S: fmt::Display,
 {
     fn fmt(&self, fmtr: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -185,11 +185,11 @@ where
     }
 }
 
-impl<R, Co, C> Error for DefaultHandlerError<R, Co, C>
+impl<R, C, S> Error for DefaultHandlerError<R, C, S>
 where
     R: Error,
-    Co: Error,
     C: Error,
+    S: Error,
 {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {

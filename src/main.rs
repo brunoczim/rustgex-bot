@@ -7,6 +7,7 @@ mod request;
 mod command;
 mod handler;
 mod commands;
+mod app;
 
 #[tokio::main]
 async fn main() {}
