@@ -2,9 +2,9 @@ use crate::{
     config::Config,
     domain::{Id, Message},
 };
-use std::{error::Error, rc::Rc, sync::Arc};
+use std::{error::Error, fmt, rc::Rc, sync::Arc};
 
-pub trait Parser<M, C>
+pub trait Parser<M, C>: fmt::Debug
 where
     M: Id,
     C: Id,

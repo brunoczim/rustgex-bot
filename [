@@ -1,0 +1,68 @@
+use crate::{config::Config, domain::Id, handler::Handler, port::Receiver};
+use std::{error::Error, sync::Arc};
+
+#[derive(Debug, Clone)]
+pub enum AppError<R, H> {
+    Receiver(R),
+    Handler(H),
+}
+
+#[derive(Debug, Clone)]
+pub struct App<'handlers, R, M, C, E>
+where
+    R: Receiver<MessageId = M, ChatId = C>,
+    M: Id,
+    C: Id,
+    E: Error,
+{
+    receiver: R,
+    handlers: Vec<
+        Arc<
+            dyn Handler<MessageId = M, ChatId = C, Error = E>
+                + Send
+                + Sync
+                + 'handlers,
+        >,
+    >,
+}
+
+impl<'handlers, R, M, C, E> App<'handlers, R, M, C, E>
+where
+    R: Receiver<MessageId = M, ChatId = C>,
+    M: Id,
+    C: Id,
+    E: Error,
+{
+    pub fn new(receiver: R) -> Self {
+        Self { receiver, handlers: Vec::new() }
+    }
+
+    pub fn handler<H>(mut self, handler: H) -> Self
+    where
+        H: Handler<MessageId = M, ChatId = C, Error = E>
+            + Send
+            + Sync
+            + 'handlers,
+    {
+        self.handlers.push(Arc::new(handler));
+        self
+    }
+
+    pub async fn run(self) -> Result<(), AppError<R::Error, E>> {
+        while let Ok(input_message) =
+            receiver.receive().await.map_err(AppError::Receiver)?
+        {
+            for handler in &handlers {
+                if handler
+                    .run(config, &input_message)
+                    .await
+                    .map_err(AppError::Handler)?
+                {
+                    break;
+                }
+            }
+        }
+
+        Ok(())
+    }
+}

@@ -1,7 +1,7 @@
 use crate::domain::{Id, NewMessage};
-use std::{error::Error, rc::Rc, sync::Arc};
+use std::{error::Error, fmt, rc::Rc, sync::Arc};
 
-pub trait Command<R, M, C>
+pub trait Command<R, M, C>: fmt::Debug
 where
     M: Id,
     C: Id,

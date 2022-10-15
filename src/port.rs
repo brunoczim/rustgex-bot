@@ -16,7 +16,7 @@ impl fmt::Display for Disconnected {
 
 impl Error for Disconnected {}
 
-pub trait Sender {
+pub trait Sender: fmt::Debug {
     type MessageId: Id;
     type ChatId: Id;
     type Error: Error;
@@ -107,7 +107,7 @@ where
     }
 }
 
-pub trait Receiver {
+pub trait Receiver: fmt::Debug {
     type MessageId: Id;
     type ChatId: Id;
     type Error: Error;
@@ -142,7 +142,6 @@ where
     > {
         (**self).receive()
     }
-
 }
 
 impl<'this, R> Receiver for &'this mut R
@@ -164,7 +163,6 @@ where
     > {
         (**self).receive()
     }
-
 }
 
 impl<R> Receiver for Box<R>
@@ -186,7 +184,6 @@ where
     > {
         (**self).receive()
     }
-
 }
 
 impl<R> Receiver for Rc<R>
@@ -208,7 +205,6 @@ where
     > {
         (**self).receive()
     }
-
 }
 
 impl<R> Receiver for Arc<R>
@@ -230,5 +226,4 @@ where
     > {
         (**self).receive()
     }
-
 }

@@ -1,5 +1,4 @@
-use core::fmt;
-use std::{error::Error, rc::Rc, sync::Arc};
+use std::{error::Error, fmt, rc::Rc, sync::Arc};
 
 use crate::{
     command::Command,
@@ -10,7 +9,7 @@ use crate::{
     request,
 };
 
-pub trait Handler {
+pub trait Handler: fmt::Debug {
     type MessageId: Id;
     type ChatId: Id;
     type Error: Error;
@@ -116,7 +115,7 @@ where
 {
     pub request_parser: R,
     pub command: C,
-    pub channel: S,
+    pub sender: S,
 }
 
 impl<R, C, S> Handler for DefaultHandler<R, C, S>
@@ -151,7 +150,7 @@ where
                         .command
                         .execute(request)
                         .map_err(DefaultHandlerError::Command)?;
-                    self.channel
+                    self.sender
                         .send(&output_message)
                         .await
                         .map_err(DefaultHandlerError::Channel)?;

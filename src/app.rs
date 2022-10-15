@@ -1,31 +1,95 @@
-use crate::{domain::Id, handler::Handler};
-use std::{error::Error, sync::Arc};
+use crate::{config::Config, domain::Id, handler::Handler, port::Receiver};
+use std::{error::Error, fmt, sync::Arc};
 
-pub struct App<M, C, E>
+#[derive(Debug, Clone)]
+pub enum AppError<R, H> {
+    Receiver(R),
+    Handler(H),
+}
+
+impl<R, H> fmt::Display for AppError<R, H>
+where
+    R: fmt::Display,
+    H: fmt::Display,
+{
+    fn fmt(&self, fmtr: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Receiver(cause) => write!(fmtr, "{}", cause),
+            Self::Handler(cause) => write!(fmtr, "{}", cause),
+        }
+    }
+}
+
+impl<R, H> Error for AppError<R, H>
+where
+    R: Error,
+    H: Error,
+{
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Receiver(cause) => cause.source(),
+            Self::Handler(cause) => cause.source(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct App<'handlers, M, C, E>
 where
     M: Id,
     C: Id,
     E: Error,
 {
+    config: Config,
     handlers: Vec<
-        Arc<dyn Handler<MessageId = M, ChatId = C, Error = E> + Send + Sync>,
+        Arc<
+            dyn Handler<MessageId = M, ChatId = C, Error = E>
+                + Send
+                + Sync
+                + 'handlers,
+        >,
     >,
 }
 
-impl<M, C, E> App<M, C, E>
+impl<'handlers, M, C, E> App<'handlers, M, C, E>
 where
     M: Id,
     C: Id,
     E: Error,
 {
-    fn new<I>(handlers: I) -> Self
+    pub fn new(config: Config) -> Self {
+        Self { config, handlers: Vec::new() }
+    }
+
+    pub fn handler<H>(mut self, handler: H) -> Self
     where
-        I: IntoIterator<
-            Item = Arc<
-                dyn Handler<MessageId = M, ChatId = C, Error = E> + Send + Sync,
-            >,
-        >,
+        H: Handler<MessageId = M, ChatId = C, Error = E>
+            + Send
+            + Sync
+            + 'handlers,
     {
-        Self { handlers: handlers.into_iter().collect() }
+        self.handlers.push(Arc::new(handler));
+        self
+    }
+
+    pub async fn run<R>(self, receiver: R) -> Result<(), AppError<R::Error, E>>
+    where
+        R: Receiver<MessageId = M, ChatId = C>,
+    {
+        while let Ok(input_message) =
+            receiver.receive().await.map_err(AppError::Receiver)?
+        {
+            for handler in &self.handlers {
+                if handler
+                    .run(&self.config, &input_message)
+                    .await
+                    .map_err(AppError::Handler)?
+                {
+                    break;
+                }
+            }
+        }
+
+        Ok(())
     }
 }
