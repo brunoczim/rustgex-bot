@@ -1,5 +1,5 @@
 use crate::{
-    domain::{Id, Message},
+    domain::{Id, Message, NewMessage},
     future::DynFuture,
 };
 use core::fmt;
@@ -23,7 +23,7 @@ pub trait MessageChannel {
 
     fn send<'fut>(
         &'fut self,
-        message: &'fut Message<Self::MessageId, Self::ChatId>,
+        message: &'fut NewMessage<Self::MessageId, Self::ChatId>,
     ) -> DynFuture<'fut, Result<(), Self::Error>>;
 
     fn receive<'fut>(
@@ -47,7 +47,7 @@ where
 
     fn send<'fut>(
         &'fut self,
-        message: &'fut Message<Self::MessageId, Self::ChatId>,
+        message: &'fut NewMessage<Self::MessageId, Self::ChatId>,
     ) -> DynFuture<'fut, Result<(), Self::Error>> {
         (**self).send(message)
     }
@@ -75,7 +75,7 @@ where
 
     fn send<'fut>(
         &'fut self,
-        message: &'fut Message<Self::MessageId, Self::ChatId>,
+        message: &'fut NewMessage<Self::MessageId, Self::ChatId>,
     ) -> DynFuture<'fut, Result<(), Self::Error>> {
         (**self).send(message)
     }
@@ -103,7 +103,7 @@ where
 
     fn send<'fut>(
         &'fut self,
-        message: &'fut Message<Self::MessageId, Self::ChatId>,
+        message: &'fut NewMessage<Self::MessageId, Self::ChatId>,
     ) -> DynFuture<'fut, Result<(), Self::Error>> {
         (**self).send(message)
     }
@@ -131,7 +131,7 @@ where
 
     fn send<'fut>(
         &'fut self,
-        message: &'fut Message<Self::MessageId, Self::ChatId>,
+        message: &'fut NewMessage<Self::MessageId, Self::ChatId>,
     ) -> DynFuture<'fut, Result<(), Self::Error>> {
         (**self).send(message)
     }
@@ -159,7 +159,7 @@ where
 
     fn send<'fut>(
         &'fut self,
-        message: &'fut Message<Self::MessageId, Self::ChatId>,
+        message: &'fut NewMessage<Self::MessageId, Self::ChatId>,
     ) -> DynFuture<'fut, Result<(), Self::Error>> {
         (**self).send(message)
     }

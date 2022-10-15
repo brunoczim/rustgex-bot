@@ -1,5 +1,5 @@
 use crate::{
-    domain,
+    domain::{self, MessageData},
     future::DynFuture,
     port::{Disconnected, MessageChannel},
 };
@@ -38,17 +38,25 @@ fn tg_message_to_domain(
             ),
         };
 
-        if let MessageKind::Text { data, entities } = kind {
+        if let MessageKind::Text { data, .. } = kind {
             Some(domain::Message {
                 id,
-                chat_id,
-                content: data,
-                replying_to: replying_to
-                    .filter(|_| convert_reply)
-                    .and_then(|msg_or_post| {
-                        convert_with_custom_reply(*msg_or_post, false)
-                    })
-                    .map(Box::new),
+                data: MessageData {
+                    chat_id,
+                    content: data,
+                    reply_target: if convert_reply {
+                        match replying_to.and_then(|msg_or_post| {
+                            convert_with_custom_reply(*msg_or_post, false)
+                        }) {
+                            Some(message) => {
+                                domain::ReplyTarget::Message(Box::new(message))
+                            },
+                            None => domain::ReplyTarget::NotReplying,
+                        }
+                    } else {
+                        domain::ReplyTarget::Prunned
+                    },
+                },
             })
         } else {
             None
@@ -84,15 +92,19 @@ impl MessageChannel for TgMessageChannel {
 
     fn send<'fut>(
         &'fut self,
-        message: &'fut domain::Message<Self::MessageId, Self::ChatId>,
+        message: &'fut domain::NewMessage<Self::MessageId, Self::ChatId>,
     ) -> DynFuture<'fut, Result<(), Self::Error>> {
         Box::pin(async move {
             let mut request =
-                SendMessage::new(message.chat_id, &message.content);
-            if let Some(reply_target) =
-                message.replying_to.as_ref().map(Box::as_ref)
-            {
-                request.reply_to(reply_target.id);
+                SendMessage::new(message.data.chat_id, &message.data.content);
+            match &message.data.reply_target {
+                domain::ReplyTarget::Message(message) => {
+                    request.reply_to(message.id);
+                },
+                domain::ReplyTarget::MessageId(message_id) => {
+                    request.reply_to(message_id);
+                },
+                _ => (),
             }
             self.api.send(request).await?;
             Ok(())

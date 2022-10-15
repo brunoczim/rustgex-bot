@@ -1,5 +1,5 @@
 use core::fmt;
-use std::error::Error;
+use std::{error::Error, rc::Rc, sync::Arc};
 
 use crate::{
     command::Command,
@@ -18,8 +18,93 @@ pub trait Handler {
     fn run<'fut>(
         &'fut self,
         config: &'fut Config,
-        message: &'fut Message<Self::MessageId, Self::ChatId>,
+        input_message: &'fut Message<Self::MessageId, Self::ChatId>,
     ) -> DynFuture<'fut, Result<bool, Self::Error>>;
+}
+
+impl<'this, H> Handler for &'this H
+where
+    H: Handler + ?Sized,
+{
+    type MessageId = H::MessageId;
+    type ChatId = H::ChatId;
+    type Error = H::Error;
+
+    fn run<'fut>(
+        &'fut self,
+        config: &'fut Config,
+        input_message: &'fut Message<Self::MessageId, Self::ChatId>,
+    ) -> DynFuture<'fut, Result<bool, Self::Error>> {
+        (**self).run(config, input_message)
+    }
+}
+
+impl<'this, H> Handler for &'this mut H
+where
+    H: Handler + ?Sized,
+{
+    type MessageId = H::MessageId;
+    type ChatId = H::ChatId;
+    type Error = H::Error;
+
+    fn run<'fut>(
+        &'fut self,
+        config: &'fut Config,
+        input_message: &'fut Message<Self::MessageId, Self::ChatId>,
+    ) -> DynFuture<'fut, Result<bool, Self::Error>> {
+        (**self).run(config, input_message)
+    }
+}
+
+impl<H> Handler for Box<H>
+where
+    H: Handler + ?Sized,
+{
+    type MessageId = H::MessageId;
+    type ChatId = H::ChatId;
+    type Error = H::Error;
+
+    fn run<'fut>(
+        &'fut self,
+        config: &'fut Config,
+        input_message: &'fut Message<Self::MessageId, Self::ChatId>,
+    ) -> DynFuture<'fut, Result<bool, Self::Error>> {
+        (**self).run(config, input_message)
+    }
+}
+
+impl<H> Handler for Rc<H>
+where
+    H: Handler + ?Sized,
+{
+    type MessageId = H::MessageId;
+    type ChatId = H::ChatId;
+    type Error = H::Error;
+
+    fn run<'fut>(
+        &'fut self,
+        config: &'fut Config,
+        input_message: &'fut Message<Self::MessageId, Self::ChatId>,
+    ) -> DynFuture<'fut, Result<bool, Self::Error>> {
+        (**self).run(config, input_message)
+    }
+}
+
+impl<H> Handler for Arc<H>
+where
+    H: Handler + ?Sized,
+{
+    type MessageId = H::MessageId;
+    type ChatId = H::ChatId;
+    type Error = H::Error;
+
+    fn run<'fut>(
+        &'fut self,
+        config: &'fut Config,
+        input_message: &'fut Message<Self::MessageId, Self::ChatId>,
+    ) -> DynFuture<'fut, Result<bool, Self::Error>> {
+        (**self).run(config, input_message)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -53,21 +138,21 @@ where
     fn run<'fut>(
         &'fut self,
         config: &'fut Config,
-        message: &'fut Message<Self::MessageId, Self::ChatId>,
+        input_message: &'fut Message<Self::MessageId, Self::ChatId>,
     ) -> DynFuture<'fut, Result<bool, Self::Error>> {
         Box::pin(async move {
             match self
                 .request_parser
-                .parse(config, message)
+                .parse(config, input_message)
                 .map_err(DefaultHandlerError::Request)?
             {
                 Some(request) => {
-                    let message = self
+                    let output_message = self
                         .command
                         .execute(request)
                         .map_err(DefaultHandlerError::Command)?;
                     self.channel
-                        .send(&message)
+                        .send(&output_message)
                         .await
                         .map_err(DefaultHandlerError::Channel)?;
                     Ok(true)

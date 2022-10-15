@@ -6,7 +6,7 @@ mod adapter;
 mod request;
 mod command;
 mod handler;
-mod help;
+mod commands;
 
 #[tokio::main]
 async fn main() {}
