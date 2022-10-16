@@ -61,7 +61,8 @@ struct Flags {
 #[derive(Debug, Clone)]
 pub enum ReplacementNode {
     Text(String),
-    Index(usize),
+    GroupIndex(usize),
+    GroupName(String),
 }
 
 #[derive(Debug, Clone)]
@@ -79,7 +80,93 @@ impl Replacement {
     fn parse(replacement_str: &str) -> Self {
         let mut this = Self::default();
         let mut curr_text = String::new();
-        todo!()
+        let mut char_stream = replacement_str.chars().peekable();
+
+        while let Some(first_char) = char_stream.next() {
+            if first_char == '\\' {
+                match char_stream.peek() {
+                    Some('\\') => {
+                        char_stream.next();
+                        curr_text.push('\\');
+                    },
+                    Some('/') => {
+                        char_stream.next();
+                        curr_text.push('/');
+                    },
+                    Some('g') => {
+                        char_stream.next();
+                        match char_stream.peek() {
+                            Some('{') => {
+                                char_stream.next();
+                                let mut group_name = String::new();
+                                let mut close_count = 1;
+                                loop {
+                                    if close_count == 0 {
+                                        break;
+                                    }
+                                    match char_stream.next() {
+                                        Some('}') => {
+                                            close_count -= 1;
+                                        },
+                                        Some('{') => {
+                                            close_count += 1;
+                                        },
+                                        Some('\\') => {
+                                            match char_stream.next() {
+                                                Some(next_char) => {
+                                                    group_name.push(next_char)
+                                                },
+
+                                                None => group_name.push('\\'),
+                                            }
+                                        },
+                                        Some(character) => {
+                                            group_name.push(character)
+                                        },
+                                        None => break,
+                                    }
+                                }
+
+                                if curr_text.len() > 1 {
+                                    this.nodes
+                                        .push(ReplacementNode::Text(curr_text));
+                                    curr_text = String::new();
+                                }
+                                this.nodes
+                                    .push(ReplacementNode::GroupName(index));
+                            },
+                            _ => curr_text.push('g'),
+                        }
+                    },
+                    Some('{') => {
+                        char_stream.next();
+                    },
+                    Some(_) => {
+                        if curr_text.len() > 1 {
+                            this.nodes.push(ReplacementNode::Text(curr_text));
+                            curr_text = String::new();
+                        }
+                        let mut index = 0usize;
+                        while let Some(digit) =
+                            char_stream.peek().and_then(|ch| ch.to_digit(10))
+                        {
+                            index *= 10;
+                            index += usize::try_from(digit)
+                                .expect("max digit is 10");
+                            char_stream.next();
+                        }
+                        this.nodes.push(ReplacementNode::GroupIndex(index));
+                    },
+                    _ => {
+                        char_stream.next();
+                    },
+                }
+            } else {
+                curr_text.push(first_char);
+            }
+        }
+
+        this
     }
 }
 
