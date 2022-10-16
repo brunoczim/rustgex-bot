@@ -2,7 +2,7 @@ use std::{error::Error, fmt, rc::Rc, sync::Arc};
 
 use crate::{
     command::Command,
-    domain::{Bot, Id, Message},
+    domain::{Bot, Id, Message, MessageData, NewMessage, ReplyTarget},
     future::DynFuture,
     port::Sender,
     request,
@@ -131,7 +131,7 @@ where
 {
     type MessageId = S::MessageId;
     type ChatId = S::ChatId;
-    type Error = DefaultHandlerError<R::Error, C::Error, S::Error>;
+    type Error = S::Error;
 
     fn run<'fut>(
         &'fut self,
@@ -139,61 +139,42 @@ where
         input_message: &'fut Message<Self::MessageId, Self::ChatId>,
     ) -> DynFuture<'fut, Result<bool, Self::Error>> {
         Box::pin(async move {
-            match self
-                .request_parser
-                .parse(bot, input_message)
-                .map_err(DefaultHandlerError::Request)?
-            {
-                Some(request) => {
-                    let output_message = self
-                        .command
-                        .execute(request)
-                        .map_err(DefaultHandlerError::Command)?;
-                    self.sender
-                        .send(&output_message)
-                        .await
-                        .map_err(DefaultHandlerError::Channel)?;
+            match self.request_parser.parse(bot, input_message) {
+                Ok(Some(request)) => {
+                    match self.command.execute(request) {
+                        Ok(output_message) => {
+                            self.sender.send(&output_message).await?;
+                        },
+                        Err(error) => {
+                            let error_message = NewMessage {
+                                data: MessageData {
+                                    content: error.to_string(),
+                                    chat_id: input_message.data.chat_id,
+                                    reply_target: ReplyTarget::MessageId(
+                                        input_message.id,
+                                    ),
+                                },
+                            };
+                            self.sender.send(&error_message).await?;
+                        },
+                    }
                     Ok(true)
                 },
-                None => Ok(false),
+                Ok(None) => Ok(false),
+                Err(error) => {
+                    let error_message = NewMessage {
+                        data: MessageData {
+                            content: error.to_string(),
+                            chat_id: input_message.data.chat_id,
+                            reply_target: ReplyTarget::MessageId(
+                                input_message.id,
+                            ),
+                        },
+                    };
+                    self.sender.send(&error_message).await?;
+                    Ok(true)
+                },
             }
         })
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum DefaultHandlerError<R, C, S> {
-    Request(R),
-    Command(C),
-    Channel(S),
-}
-
-impl<R, C, S> fmt::Display for DefaultHandlerError<R, C, S>
-where
-    R: fmt::Display,
-    C: fmt::Display,
-    S: fmt::Display,
-{
-    fn fmt(&self, fmtr: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Self::Request(cause) => write!(fmtr, "{}", cause),
-            Self::Command(cause) => write!(fmtr, "{}", cause),
-            Self::Channel(cause) => write!(fmtr, "{}", cause),
-        }
-    }
-}
-
-impl<R, C, S> Error for DefaultHandlerError<R, C, S>
-where
-    R: Error,
-    C: Error,
-    S: Error,
-{
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::Request(cause) => cause.source(),
-            Self::Command(cause) => cause.source(),
-            Self::Channel(cause) => cause.source(),
-        }
     }
 }
