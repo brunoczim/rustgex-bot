@@ -140,13 +140,11 @@ where
     ) -> DynFuture<'fut, Result<bool, Self::Error>> {
         Box::pin(async move {
             match self.request_parser.parse(bot, input_message) {
-                Ok(Some(request)) => {
-                    match self.command.execute(request) {
-                        Ok(output_message) => {
-                            self.sender.send(&output_message).await?;
-                        },
-                        Err(error) => {
-                            let error_message = NewMessage {
+                Some(parse_result) => {
+                    let output_message = match parse_result {
+                        Ok(request) => match self.command.execute(request) {
+                            Ok(message) => message,
+                            Err(error) => NewMessage {
                                 data: MessageData {
                                     content: error.to_string(),
                                     chat_id: input_message.data.chat_id,
@@ -154,26 +152,23 @@ where
                                         input_message.id,
                                     ),
                                 },
-                            };
-                            self.sender.send(&error_message).await?;
+                            },
                         },
-                    }
-                    Ok(true)
-                },
-                Ok(None) => Ok(false),
-                Err(error) => {
-                    let error_message = NewMessage {
-                        data: MessageData {
-                            content: error.to_string(),
-                            chat_id: input_message.data.chat_id,
-                            reply_target: ReplyTarget::MessageId(
-                                input_message.id,
-                            ),
+                        Err(error) => NewMessage {
+                            data: MessageData {
+                                content: error.to_string(),
+                                chat_id: input_message.data.chat_id,
+                                reply_target: ReplyTarget::MessageId(
+                                    input_message.id,
+                                ),
+                            },
                         },
                     };
-                    self.sender.send(&error_message).await?;
+
+                    self.sender.send(&output_message).await?;
                     Ok(true)
                 },
+                None => Ok(false),
             }
         })
     }

@@ -41,7 +41,7 @@ where
         &self,
         bot: &Bot,
         message: &Message<M, C>,
-    ) -> Result<Option<Self::Request>, Self::Error> {
+    ) -> Option<Result<Self::Request, Self::Error>> {
         let matches_without_handle = message.data.content.trim() == "/help";
         let matches_with_handle = message
             .data
@@ -50,12 +50,12 @@ where
             .map(|(head, tail)| head == "/help" && tail == bot.handle)
             .unwrap_or(false);
         if matches_with_handle || matches_without_handle {
-            Ok(Some(HelpRequest {
+            Some(Ok(HelpRequest {
                 original_message_id: message.id,
                 chat_id: message.data.chat_id,
             }))
         } else {
-            Ok(None)
+            None
         }
     }
 }

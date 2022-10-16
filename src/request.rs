@@ -13,7 +13,7 @@ where
         &self,
         bot: &Bot,
         message: &Message<M, C>,
-    ) -> Result<Option<Self::Request>, Self::Error>;
+    ) -> Option<Result<Self::Request, Self::Error>>;
 }
 
 impl<'this, P, M, C> Parser<M, C> for &'this P
@@ -29,7 +29,7 @@ where
         &self,
         bot: &Bot,
         message: &Message<M, C>,
-    ) -> Result<Option<Self::Request>, Self::Error> {
+    ) -> Option<Result<Self::Request, Self::Error>> {
         (**self).parse(bot, message)
     }
 }
@@ -47,7 +47,7 @@ where
         &self,
         bot: &Bot,
         message: &Message<M, C>,
-    ) -> Result<Option<Self::Request>, Self::Error> {
+    ) -> Option<Result<Self::Request, Self::Error>> {
         (**self).parse(bot, message)
     }
 }
@@ -65,7 +65,7 @@ where
         &self,
         bot: &Bot,
         message: &Message<M, C>,
-    ) -> Result<Option<Self::Request>, Self::Error> {
+    ) -> Option<Result<Self::Request, Self::Error>> {
         (**self).parse(bot, message)
     }
 }
@@ -83,7 +83,7 @@ where
         &self,
         bot: &Bot,
         message: &Message<M, C>,
-    ) -> Result<Option<Self::Request>, Self::Error> {
+    ) -> Option<Result<Self::Request, Self::Error>> {
         (**self).parse(bot, message)
     }
 }
@@ -101,7 +101,7 @@ where
         &self,
         bot: &Bot,
         message: &Message<M, C>,
-    ) -> Result<Option<Self::Request>, Self::Error> {
+    ) -> Option<Result<Self::Request, Self::Error>> {
         (**self).parse(bot, message)
     }
 }

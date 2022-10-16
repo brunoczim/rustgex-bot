@@ -124,37 +124,36 @@ where
         &self,
         _bot: &domain::Bot,
         message: &domain::Message<M, C>,
-    ) -> Result<Option<Self::Request>, Self::Error> {
-        match message.data.content.split_once("s/") {
-            Some((_, mut tail)) => {
-                let (query_str, new_tail) = self
-                    .split_bar_escaping(tail)
-                    .ok_or(ParseError::MissingQuery)?;
-                tail = new_tail;
-                let (replacement_str, flags_str) =
-                    match self.split_bar_escaping(tail) {
-                        Some((replacement, flags)) => (replacement, flags),
-                        None => (tail, ""),
-                    };
-                let flags = Flags::parse(flags_str)?;
-                let query = RegexBuilder::new(query_str)
-                    .case_insensitive(flags.case_insensitive)
-                    .multi_line(flags.multi_line)
-                    .dot_matches_new_line(flags.dot_matches_new_line)
-                    .swap_greed(flags.swap_greed)
-                    .ignore_whitespace(flags.ignore_whitespace)
-                    .unicode(flags.unicode)
-                    .octal(flags.octal)
-                    .build()?;
-                let replacement = Replacement::parse(replacement_str);
-                Ok(Some(Request {
-                    query,
-                    replacement,
-                    is_global: flags.global,
-                }))
-            },
-            None => Ok(None),
-        }
+    ) -> Option<Result<Self::Request, Self::Error>> {
+        let (_, mut tail) = message.data.content.split_once("s/")?;
+        let (query_str, new_tail) = match self.split_bar_escaping(tail) {
+            Some(split) => split,
+            None => return Some(Err(ParseError::MissingQuery)),
+        };
+        tail = new_tail;
+        let (replacement_str, flags_str) = match self.split_bar_escaping(tail) {
+            Some((replacement, flags)) => (replacement, flags),
+            None => (tail, ""),
+        };
+        let flags = match Flags::parse(flags_str) {
+            Ok(flags) => flags,
+            Err(error) => return Some(Err(error)),
+        };
+        let query = match RegexBuilder::new(query_str)
+            .case_insensitive(flags.case_insensitive)
+            .multi_line(flags.multi_line)
+            .dot_matches_new_line(flags.dot_matches_new_line)
+            .swap_greed(flags.swap_greed)
+            .ignore_whitespace(flags.ignore_whitespace)
+            .unicode(flags.unicode)
+            .octal(flags.octal)
+            .build()
+        {
+            Ok(regex) => regex,
+            Err(error) => return Some(Err(ParseError::InvalidRegex(error))),
+        };
+        let replacement = Replacement::parse(replacement_str);
+        Some(Ok(Request { query, replacement, is_global: flags.global }))
     }
 }
 
